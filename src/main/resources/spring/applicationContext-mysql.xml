@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<beans
+        xmlns="http://www.springframework.org/schema/beans"
+        xmlns:tx="http://www.springframework.org/schema/tx"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:aop="http://www.springframework.org/schema/aop"
+        xsi:schemaLocation="http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+
+		http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-3.0.xsd http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd">
+    <aop:aspectj-autoproxy proxy-target-class="true"/>
+
+
+    <bean id="dataSourceParent" class="org.apache.tomcat.jdbc.pool.DataSource" abstract="true">
+        <property name="driverClassName" value="com.mysql.jdbc.Driver"></property>
+        <property name="jdbcInterceptors"
+                  value="ConnectionState;StatementFinalizer;StatementDecoratorInterceptor;ResetAbandonedTimer;SlowQueryReport(threshold=1000);SlowQueryReportJmx(notifyPool=false)"></property>
+        <property name="testWhileIdle" value="true"></property>
+        <property name="testOnBorrow" value="true"></property>
+        <property name="validationQuery" value="select 1"></property>
+        <property name="testOnReturn" value="false"></property>
+        <property name="validationInterval" value="30000"></property>
+        <property name="timeBetweenEvictionRunsMillis" value="5000"></property>
+        <property name="maxWait" value="15000"></property>
+        <property name="removeAbandoned" value="true"></property>
+        <property name="removeAbandonedTimeout" value="60"></property>
+        <property name="logAbandoned" value="true"></property>
+        <property name="minEvictableIdleTimeMillis" value="30000"></property>
+        <property name="jmxEnabled" value="true"/>
+        <!--这个名字不能随便更改,因为它对应着我们perseus中mbean的name-->
+        <property name="name" value="jdbcPool"/>
+    </bean>
+
+
+    <bean id="master" class="org.apache.tomcat.jdbc.pool.DataSource" parent="dataSourceParent">
+        <property name="url" value="${master.connection}"></property>
+        <property name="username" value="${master.username}"></property>
+        <property name="password" value="${master.password}"></property>
+        <property name="maxActive" value="${tomcat.jdbc.pool.maxActive}"></property>
+        <property name="initialSize" value="${tomcat.jdbc.pool.initialSize}"></property>
+        <property name="minIdle" value="${tomcat.jdbc.pool.minIdle}"></property>
+    </bean>
+
+
+    <bean id="slave" class="org.apache.tomcat.jdbc.pool.DataSource" parent="dataSourceParent">
+        <property name="url" value="${slave.connection}"></property>
+        <property name="username" value="${slave.username}"></property>
+        <property name="password" value="${slave.password}"></property>
+        <property name="maxActive" value="${tomcat.jdbc.pool.maxActive}"></property>
+        <property name="initialSize" value="${tomcat.jdbc.pool.initialSize}"></property>
+        <property name="minIdle" value="${tomcat.jdbc.pool.minIdle}"></property>
+    </bean>
+
+    <bean id="dataSource" class="info.yangguo.perseus.DynamicDataSource">
+        <property name="master" ref="master"/>
+        <property name="slaves">
+            <list>
+                <ref bean="slave"/>
+            </list>
+        </property>
+    </bean>
+
+
+    <!-- ibatis3 工厂类 -->
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="configLocation" value="classpath:mybatis-config.xml"/>
+        <property name="typeAliasesPackage" value="xyz.energycloud.webchat.domain"/>
+    </bean>
+
+    <bean class="info.yangguo.perseus.MapperScannerConfigurer">
+        <property name="basePackage" value="xyz.energycloud.webchat.dao"/>
+        <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"/>
+    </bean>
+
+
+    <!-- 定义单个jdbc数据源的事务管理器 -->
+    <bean id="transactionManager"
+          class="info.yangguo.perseus.DynamicDataSourceTransactionManager">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+    <!-- 以 @Transactional 标注来定义事务,默认事务管理使用transactionManager  -->
+    <tx:annotation-driven transaction-manager="transactionManager"
+                          proxy-target-class="true"/>
+</beans>
